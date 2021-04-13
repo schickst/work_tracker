@@ -1,6 +1,6 @@
 [package]
 name = "work_tracker"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Stefan Schick <stefan.schick@stecug.de>"]
 edition = "2018"
 
@@ -8,4 +8,4 @@ edition = "2018"
 
 [dependencies]
 clap = "2.33.3"
-chrono = "*"
+chrono = "0.4.19"
