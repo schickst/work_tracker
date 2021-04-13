@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::process::Command;
 use std::thread;
 use chrono::NaiveDateTime;
@@ -19,7 +20,7 @@ fn get_active_window_pid() -> Option<u64> {
         .arg("getwindowpid")
         .output()
         .expect("Failed to get active window pid");
-    //println!("{:?}", output);
+
     if output.status.success() {
         let data = parse_and_trim(output.stdout);
         let pid = data.parse::<u64>().unwrap();
@@ -37,7 +38,7 @@ fn get_active_window_name() -> String {
         .arg("getwindowname")
         .output()
         .expect("Failed to get active window name");
-    //println!("{:?}", output); 
+
     parse_and_trim(output.stdout)
 }
 
@@ -51,76 +52,54 @@ fn get_active_application_title(pid: u64) -> String {
         .arg("comm=")
         .output()
         .expect("Failed to get active window name");
-    //println!("{:?}", output);
+
     parse_and_trim(output.stdout)
 }
 
 
 
-fn print_summary(applications: &[String], windows: &[LogEntry]) {
-    println!();
+fn print_summary(app_windows: &HashMap<String, HashMap<String, i64>>) {
+    print!("\x1B[2J\x1B[1;1H"); // Clear screen reset cursor
     println!("Summary");
     println!("=======");
     println!();
 
-    for application in applications {
-
-        let application_times = windows.iter()
-            .filter(|o| o.application_title == *application)
-            .map(|o| o.duration_secs)
-            .collect::<Vec<i64>>();
-        let application_time: i64 = application_times.iter().sum();
+    for (application, windows) in app_windows {
+        let application_time: i64 = windows.values().sum();
         let application_duration = NaiveDateTime::from_timestamp(application_time, 0);
 
         println!("------------------------------------------------------------");
         println!("{} | {}", application_duration.format("%H:%M:%S"), application);
         println!("------------------------------------------------------------");
+        
+        let mut sorted_windows: Vec<(&String, &i64)> = windows.iter().collect();
+        sorted_windows.sort_by(|a, b| b.1.cmp(a.1));
 
-        for window in windows {
-            if window.application_title != *application {
-                continue;
-            }
-
-            let duration = NaiveDateTime::from_timestamp(window.duration_secs, 0);
-            println!("\t{} | {}", duration.format("%H:%M:%S"), window.window_name);
+        for (window, duration_secs) in sorted_windows {
+            let duration = NaiveDateTime::from_timestamp(*duration_secs, 0);
+            println!("\t{} | {}", duration.format("%H:%M:%S"), window);
         }
     }
-    println!();
 }
 
 
-fn track_window(pid: u64, applications: &mut Vec<String>, windows: &mut Vec<LogEntry>, period: i64) {
+fn track_window(pid: u64, app_windows: &mut HashMap<String, HashMap<String, i64>>, period: i64) {
     let name = get_active_window_name();
     let title = get_active_application_title(pid);
 
-    if !applications.contains(&title) {
-        applications.push(title.clone());
+    if !app_windows.contains_key(&title) {
+        app_windows.insert(title.clone(), HashMap::new());
     }
 
-    match windows.iter_mut().find(|o| o.window_name == name) {
-        Some(window) => {
-            window.duration_secs += period;
-        },
-        None => {
-            let new_entry = LogEntry { 
-                application_title: title,
-                window_name: name.clone(),
-                duration_secs: period
-            };
-            windows.push(new_entry);
-        }
+    // We ensured it exists above
+    let windows = app_windows.get_mut(&title).unwrap();
+
+    if let Some(window) = windows.get_mut(&name) {
+        *window += period;
+    } else {
+        windows.insert(name, period);
     }
 }
-
-
-
-#[derive(Debug, PartialEq, Clone)]
-struct LogEntry {
-    application_title: String,
-    window_name: String,
-    duration_secs: i64
-}
-
 
 
 fn main() {
@@ -139,21 +118,19 @@ fn main() {
     let resolution_parameter = matches.value_of("resolution").unwrap_or("5");
     let resolution = resolution_parameter.parse::<i64>().unwrap();
 
-    let mut applications: Vec<String> = Vec::new();
-    let mut windows: Vec<LogEntry> = Vec::new();
+    // HashMap<Application, HashMap<Window, Duration>>
+    let mut app_windows : HashMap<String, HashMap<String, i64>> = HashMap::new();
 
     loop {
         let active_window = get_active_window_pid();
 
         if let Some(pid) = active_window {
-            track_window(pid, &mut applications, &mut windows, resolution);
+            track_window(pid, &mut app_windows, resolution);
         }
 
-        print_summary(&applications, &windows);
+        print_summary(&app_windows);
 
         let delay = std::time::Duration::from_secs(resolution as u64);
         thread::sleep(delay);
-    }
-
-    
+    }    
 }
