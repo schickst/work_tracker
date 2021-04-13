@@ -111,7 +111,7 @@ fn main() {
             .short("r")
             .long("resolution")
             .value_name("SECONDS")
-            .help("Sets a custom tracking resolution in seconds")
+            .help("Sets a custom tracking resolution in seconds, default is 5s.")
             .takes_value(true))
         .get_matches();
 
